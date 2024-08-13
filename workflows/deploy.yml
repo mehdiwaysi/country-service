@@ -1,0 +1,125 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+name: Deploy Country service
+
+on: 
+    workflow_dispatch:
+        inputs:
+            stage:
+                description: 'Stage to deploy to'
+                required: true
+                default: dev
+                type: choice
+                options:
+                - test
+                - dev
+                - prod
+                - sb
+            accountId:
+                description: 'Revotech AU Dev/Test: 275214891288, Truuth AU Dev/TEST: 566318860935, Truuth AU Prod: 650361931399, Truuth AU Sandbox: 271541505793, Truuth EU Sandbox: 632044245236, Truuth EU Prod: 392682065164'
+                required: true
+                default: '275214891288'
+                type: choice
+                options:
+                - '275214891288'
+                - '566318860935'
+                - '650361931399'
+                - '271541505793'
+                - '632044245236'
+                - '392682065164'
+            region:
+                description: 'Region to deploy to'
+                required: true
+                default: 'ap-southeast-2'
+                type: choice
+                options:
+                - 'ap-southeast-2'
+                - 'eu-west-1'
+            country:
+                description: 'Country to deploy to'
+                required: true
+                default: 'au'
+                type: choice
+                options:
+                - 'au'
+                - 'eu'
+            rootDomain:
+                description: 'Root domain to deploy to'
+                required: true
+                default: 'tribify.io'
+                type: choice
+                options:
+                - 'tribify.io'
+                - 'truuth.id'
+    push:
+        branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.21.x' ]
+        node-version: ['18']
+    env:
+      AWS_DEFAULT_REGION: ${{ inputs.region || 'ap-southeast-2' }}
+      ACCOUNT_ID: ${{ inputs.accountId || '275214891288' }}
+      COUNTRY: ${{ inputs.country || 'au' }}
+      STAGE: ${{ inputs.stage || 'dev' }}
+      ROOTDOMAIN: ${{ inputs.rootDomain || 'tribify.io' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      GO_PRIVATE: "github.com/revotech-group"
+      TESTCONTAINER_DOCKER_NETWORK: revotech-testcontainers
+      DOCKER_BUILDKIT: 1
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{env.AWS_DEFAULT_REGION}}
+      
+      - name: Create Docker network for running Testcontianers
+        run: docker network create ${{ env.TESTCONTAINER_DOCKER_NETWORK }}
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+ 
+      - name: Install Go Service Dependencies
+        run: |
+          git config --global url."https://${{ secrets.TOKEN }}@github.com/".insteadOf "https://github.com/"
+          go env -w GOPRIVATE="${{ env.GO_PRIVATE }}"
+          go mod tidy
+    
+      - name: Test Service
+        run: |
+          export TESTCONTAINERS_RYUK_DISABLED=true
+          echo "Running tests..."
+          go test -v ./...
+
+      - name: Authenticate with npm
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
+
+      - name: Install Node.js Dependencies
+        run: |
+          npm install -g serverless@3.38.0
+          npm install
+
+
+      - name: Deploy
+        run: |
+          echo "Deploying..."
+          bash ./scripts/assume_role.sh arn:aws:iam::${{env.ACCOUNT_ID}}:role/TravisCrossAccount ${{env.STAGE}}
+          serverless deploy --aws-profile ${{env.STAGE}} --stage ${{env.STAGE}} --region ${{env.AWS_DEFAULT_REGION}} --param="account=${{env.ACCOUNT_ID}}"  --param="country=${{env.COUNTRY}}" --param="rootDomain=${{env.ROOTDOMAIN}}" --param="version=${{github.sha}}"

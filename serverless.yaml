@@ -1,0 +1,264 @@
+app: ${opt:app, 'truuth'}
+service: ${self:app}-country-srv
+frameworkVersion: '3'
+
+# only use this for variables that are used by the serverless framework and not by the functions
+custom:
+  org: locii
+  stage: ${opt:stage, 'dev'}
+  country: ${param:country, 'au'}
+  region: ${opt:region, 'ap-southeast-2'}
+  accountId: ${param:account, '566318860935'}
+  rootDomain: ${param:rootDomain, 'truuth.id'}
+  eventBusName: ${self:app}-event-bus-${self:custom.stage}
+  associateWaf:
+      name: truuth-${self:custom.stage}
+      version: V2 #(optional) Regional | V2
+
+
+  prune:
+    automatic: true
+    number: 3
+
+  logLevels:
+    dev: debug
+    test: debug
+    demo: error
+    sb: error
+    prod: error
+
+  domains:
+    prod: private.api.${self:custom.country}.${self:custom.rootDomain}
+    dev: private.api.${self:custom.country}.${self:custom.stage}.${self:custom.rootDomain}
+    test: private.api.${self:custom.country}.${self:custom.stage}.${self:custom.rootDomain}
+    demo: private.api.${self:custom.country}.${self:custom.stage}.${self:custom.rootDomain}
+    sb: private.api.${self:custom.country}.${self:custom.stage}.${self:custom.rootDomain}
+  customDomain:
+    domainName: ${self:custom.domains.${self:custom.stage}}
+    basePath: country
+    stage: ${self:custom.stage}
+    createRoute53Record: true
+
+  authorizerArn: arn:aws:lambda:${self:custom.region}:${self:custom.accountId}:function:${self:app}-custom-authorizer-${self:custom.stage}-v1
+  deadletterQueueArn: arn:aws:sqs:${self:custom.region}:${self:custom.accountId}:${self:app}-error-srv-dlq-queue-${self:custom.stage}
+
+  allowed-headers:
+    - Content-Type
+    - X-Amz-Date
+    - Authorization
+    - X-Api-Key
+    - X-Amz-Security-Token
+    - X-Amz-User-Agent
+    - X-Subscription-ID
+
+  warmupEnabled:
+    dev: false
+    test: false
+    sb: false
+    prod: true
+
+  warmup:
+    default:
+      enabled: ${self:custom.warmupEnabled.${self:custom.stage}}
+      prewarm: ${self:custom.warmupEnabled.${self:custom.stage}}
+      events:
+        - schedule: cron(0/5 * ? * MON-SUN *)
+      concurrency: 2
+
+  # Datadog Config
+  datadog:
+    service: ${self:service}
+    apiKeySecretArn: ${ssm:/${self:app}/${self:custom.country}/${self:custom.stage}/datadog/api-key-secret-arn}
+    site: ${ssm:/${self:app}/${self:custom.country}/${self:custom.stage}/datadog/site}
+    env: ${self:custom.country}-${self:custom.stage}
+    enableDDTracing: true
+    enableDDLogs: true
+    captureLambdaPayload: true
+    version: ${param:version, '0.0.0'}
+    enableXrayTracing: true
+    enableTags: false
+    exclude:
+      - warmUpPluginDefault
+
+# Add the serverless plugins
+plugins:
+  - serverless-prune-plugin
+  - serverless-iam-roles-per-function
+  - serverless-domain-manager
+  # - serverless-plugin-warmup
+  - serverless-go-plugin
+
+
+# AWS Configuration
+provider:
+  name: aws
+  runtime: provided.al2
+  stage: ${self:custom.stage}
+  region: ${self:custom.region}
+  timeout: 30
+  logRetentionInDays: 1
+  versionFunctions: true
+  tracing:
+    apiGateway: true
+    lambda: true
+  deploymentBucket:
+    name: temp.${self:custom.country}.${self:custom.stage}.${self:custom.rootDomain}
+    serverSideEncryption: AES256
+  lambdaHashingVersion: "20201221"
+
+
+  vpc:
+    securityGroupIds:
+      - Fn::GetAtt: [SecurityGroup, GroupId]
+    subnetIds:
+      - ${ssm:/${self:app}/${self:custom.country}/${self:custom.stage}/vpc/appsubnet1}
+      - ${ssm:/${self:app}/${self:custom.country}/${self:custom.stage}/vpc/appsubnet2}
+      - ${ssm:/${self:app}/${self:custom.country}/${self:custom.stage}/vpc/appsubnet3}
+
+  apiGateway:
+    minimumCompressionSize: 1024 # Enable gzip compression for responses > 1 KB
+    apiKeySourceType: AUTHORIZER
+
+  # variables that are globally used by all functions go here
+  environment:
+    APP: ${self:app}
+    STAGE: ${self:custom.stage}
+    COUNTRY: ${self:custom.country}
+    SERVICE: ${self:service}
+    TRUUTH_LOG_LEVEL: ${self:custom.logLevels.${self:custom.stage}}
+    EVENT_BUS: ${self:custom.eventBusName}
+
+  # iam permissions for all functions
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - ssm:GetParameters
+            - ssm:GetParameter
+            - ssm:GetParametersByPath
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource: "*"
+
+  stackTags:
+    service: ${self:service}
+    app: ${self:app}
+    env: ${self:custom.country}-${self:custom.stage}
+
+package:
+  individually: true
+  exclude:
+    - ./**
+  include:
+    - ./build/.bin/**
+
+functions:
+  http-handler:
+    name: ${self:service}-http-handler-${self:custom.stage}-v1
+    handler: cmd/lambda/main.go
+    events:
+      - http:
+          method: get
+          path: v1/countries/name/{name}
+          request:
+            parameters:
+              paths:
+                name: true
+          authorizer:
+            type: aws_iam
+      - http:
+          method: get
+          path: v1/countries/region/{region}
+          request:
+            parameters:
+              paths:
+                region: true
+          authorizer:
+            type: aws_iam
+      - http:
+          method: get
+          path: v1/countries/capital/{capital}
+          request:
+            parameters:
+              paths:
+                capital: true
+          authorizer:
+            type: aws_iam
+      - http:
+          method: get
+          path: v1/countries/lang/{lang}
+          request:
+            parameters:
+              paths:
+                lang: true
+          authorizer:
+            type: aws_iam
+      - http:
+          method: get
+          path: v1/countries/currency/{currency}
+          request:
+            parameters:
+              paths:
+                currency: true
+          authorizer:
+            type: aws_iam
+      - http:
+          method: get
+          path: v1/countries/alpha/{alphacode}
+          request:
+            parameters:
+              paths:
+                alphacode: true
+          authorizer:
+            type: aws_iam
+      - http:
+          method: get
+          path: v1/countries
+          request:
+            parameters:
+              querystrings:
+                page: false
+                limit: false
+                order: false
+                search: false
+                light: false
+          authorizer:
+            type: aws_iam
+    
+
+resources:
+  Resources:
+    securityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupName: ${self:service}-${self:custom.country}-${self:custom.stage}-sg
+        GroupDescription: ${self:service}-${self:custom.country}-${self:custom.stage} security group
+        SecurityGroupEgress:
+          - IpProtocol: -1
+            FromPort: 0
+            ToPort: 0
+            CidrIp: 0.0.0.0/0
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+        VpcId:
+          ${ssm:/${self:app}/${self:custom.country}/${self:custom.stage}/vpc/vpcid}
+    
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
