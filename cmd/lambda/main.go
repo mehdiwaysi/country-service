@@ -11,9 +11,8 @@ import (
 var router *lambda.Router
 
 func init() {
-	router = lambda.NewRouter("/email", true, middleware.HttpMiddleware)
+	router = lambda.NewRouter("/country", true, middleware.HttpMiddleware)
 
- 
 	router.Route("GET", "v1/countries/name/:name", handlers.GetByCountryNameHandler)
 	router.Route("GET", "v1/countries/region/:region", handlers.GetByCountryRegionHandler)
 	router.Route("GET", "v1/countries/capital/:capital", handlers.GetByCountryCapitalHandler)
@@ -21,7 +20,6 @@ func init() {
 	router.Route("GET", "v1/countries/currency/:currency", handlers.GetByCountryCurrencyHandler)
 	router.Route("GET", "v1/countries/alpha/:alphacode", handlers.GetByCountryAlphaCodeHandler)
 	router.Route("GET", "v1/countries", handlers.GetAllCountriesHandler)
-	 
 }
 
 func main() {
