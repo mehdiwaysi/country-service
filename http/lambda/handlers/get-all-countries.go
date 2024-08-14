@@ -1,10 +1,16 @@
 package handlers
 
 import (
- 
+	"context"
+	"net/http"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/mehdiwaysi/country-service/factory"
+	"github.com/revotech-group/email-service/http/service"
+	"github.com/revotech-group/go-aws/http/lambda"
 )
 
-func GetAllCountriesHandler(ctx context.Context, e events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func ListCountriesHandler(ctx context.Context, e events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	request := new(dto.CreateEmailRequest)
 	err := lambda.UnmarshalRequest(e, true, request, true)
 	if err != nil {
