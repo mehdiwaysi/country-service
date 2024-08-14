@@ -7,6 +7,7 @@ require (
 	github.com/revotech-group/email-service v0.0.0-20240722093516-4b3438f23118
 	github.com/revotech-group/go-aws v1.4.0
 	github.com/revotech-group/go-lib v1.3.0
+	github.com/revotech-group/go-mongo v1.0.0
 )
 
 require (
@@ -43,7 +44,6 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/redis/go-redis/v9 v9.5.3 // indirect
 	github.com/revotech-group/biopass-go-sdk v1.1.34 // indirect
-	github.com/revotech-group/go-mongo v1.0.0 // indirect
 	github.com/sendgrid/rest v2.6.9+incompatible // indirect
 	github.com/sendgrid/sendgrid-go v3.14.0+incompatible // indirect
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
