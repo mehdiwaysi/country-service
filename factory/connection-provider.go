@@ -11,7 +11,7 @@ import (
 
 type connectionProvider struct{}
 
-func NewConectionProvider() db.ConnectionProvider {
+func NewConnectionProvider() db.ConnectionProvider {
 	return &connectionProvider{}
 }
 

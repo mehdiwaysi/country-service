@@ -22,5 +22,5 @@ func NewFactory(tenantAlias string) Factory {
 }
 
 func (f *factory) CreateCountryRepository(ctx context.Context) (domain.Repository, error) {
-	return mongo.NewCountryRepository(ctx, NewConectionProvider())
+	return mongo.NewCountryRepository(ctx, NewConnectionProvider())
 }
